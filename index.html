@@ -285,10 +285,10 @@
     const ASPECT_NAMES = ["FIT", "FILL SCREEN", "STRETCH"];
     let aspectIdx = 0;
 
-    // Register Service Worker on load
+    // Register Service Worker on boot
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(err => {
-        console.error("Worker registration error:", err);
+        console.error("Worker register failure:", err);
       });
     }
 
@@ -349,31 +349,88 @@
       );
     }
 
-    // Zero-RAM On-Demand Streaming Engine
+    // Zero-RAM Streaming Engine
+    let activeKey = null;
+    let currentFile = null;
+    let currentManifest = null;
+    let clusterStartOffset = 0;
+    let chunkOffsets = [];
+
     async function streamDecryptLocal(file, manifest, clusterOffset) {
-      statusText.innerText = "Deriving cryptographic keys...";
+      currentFile = file;
+      currentManifest = manifest;
+      clusterStartOffset = clusterOffset;
+
+      statusText.innerText = "Deriving key...";
       const salt = new Uint8Array(manifest.saltHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-      const key = await deriveKey(salt);
+      activeKey = await deriveKey(salt);
 
-      statusText.innerText = "Mounting stream pipeline...";
+      let off = clusterOffset;
+      chunkOffsets = new Array(manifest.total);
+      for (let i = 0; i < manifest.total; i++) {
+        chunkOffsets[i] = off;
+        off += manifest.sizes[i];
+      }
 
+      statusText.innerText = "Connecting memory channel...";
       const registration = await navigator.serviceWorker.ready;
       const targetWorker = registration.active || navigator.serviceWorker.controller;
 
-      // Transfer file and crypto handles to the worker (no byte buffers retained in RAM)
+      const channel = new MessageChannel();
+      channel.port1.onmessage = async (e) => {
+        if (e.data && e.data.type === "READ_CHUNK") {
+          try {
+            const decryptedBytes = await readAndDecryptRange(e.data.start, e.data.end);
+            channel.port1.postMessage(
+              { id: e.data.id, buffer: decryptedBytes.buffer },
+              [decryptedBytes.buffer]
+            );
+          } catch (err) {
+            channel.port1.postMessage({ id: e.data.id, error: err.message });
+          }
+        }
+      };
+      channel.port1.start();
+
       targetWorker.postMessage({
-        type: "REGISTER_STREAM",
-        file: file,
-        manifest: manifest,
-        key: key,
-        clusterOffset: clusterOffset
-      });
+        type: "REGISTER_CHANNEL",
+        manifest: manifest
+      }, [channel.port2]);
 
-      // Small delay to ensure the worker is synchronized
       await new Promise(r => setTimeout(r, 120));
-
       statusText.innerText = "Stream ready.";
       launchStage("./stream-virtual-playback.mp4");
+    }
+
+    async function readAndDecryptRange(start, end) {
+      let currentPos = 0;
+      for (let i = 0; i < currentManifest.total; i++) {
+        const decSize = currentManifest.sizes[i] - 28;
+        const chunkStart = currentPos;
+        const chunkEnd = currentPos + decSize - 1;
+        currentPos += decSize;
+
+        if (chunkEnd >= start && chunkStart <= end) {
+          const sliceStart = chunkOffsets[i];
+          const sliceEnd = sliceStart + currentManifest.sizes[i];
+          
+          const chunkBuf = await currentFile.slice(sliceStart, sliceEnd).arrayBuffer();
+          const u8 = new Uint8Array(chunkBuf);
+          const iv = u8.subarray(0, 12);
+          const cipher = u8.subarray(12);
+
+          const decrypted = await crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: iv },
+            activeKey,
+            cipher
+          );
+
+          const subStart = Math.max(0, start - chunkStart);
+          const subEnd = Math.min(decSize, end - chunkStart + 1);
+          return new Uint8Array(decrypted).subarray(subStart, subEnd);
+        }
+      }
+      return new Uint8Array(0);
     }
 
     function launchStage(url) {
