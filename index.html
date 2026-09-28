@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>JBH Cinema Player (Ultra Stream)</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --panel: rgba(13, 18, 29, 0.94);
+      --accent: #00d2ff;
+      --text: #ffffff;
+      --sub: #94a3b8;
+      --border: rgba(255, 255, 255, 0.15);
+      --font-mono: ui-monospace, Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      background: #000;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    #layer1 {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, #111a2e 0%, #05070a 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 100;
+      gap: 20px;
+      text-align: center;
+    }
+
+    .brand-title {
+      font-size: 32px;
+      font-weight: 900;
+      color: var(--accent);
+      letter-spacing: 2px;
+      text-shadow: 0 0 16px rgba(0, 210, 255, 0.4);
+    }
+
+    .file-card {
+      background: #0d131f;
+      border: 2px dashed #28354d;
+      border-radius: 16px;
+      padding: 30px 20px;
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .file-card input[type="file"] {
+      width: 100%;
+      color: #fff;
+      font-size: 13px;
+      background: #06090e;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    #statusText {
+      font-size: 13px;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      min-height: 20px;
+      max-width: 85%;
+      line-height: 1.4;
+    }
+
+    #layer2 {
+      position: fixed;
+      inset: 0;
+      display: none;
+      background: #000;
+      z-index: 50;
+      overflow: hidden;
+    }
+
+    #videoContainer {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      pointer-events: none;
+    }
+
+    .top-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 52px;
+      padding: env(safe-area-inset-top, 8px) 16px 0 16px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 30;
+      transition: opacity 0.3s;
+    }
+
+    .btn-action {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .bottom-bar {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 65%, transparent 100%);
+      padding: 10px 16px calc(8px + env(safe-area-inset-bottom)) 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 30;
+      transition: opacity 0.3s;
+    }
+
+    .timeline {
+      width: 100%;
+      height: 6px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .btn-group { display: flex; align-items: center; gap: 8px; }
+
+    .ctrl-btn {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid var(--border);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 7px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .ctrl-btn:active { background: var(--accent); color: #000; }
+
+    .time-txt {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+
+    .ui-hidden { opacity: 0 !important; pointer-events: none !important; }
+
+    .resume-modal {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(13, 18, 29, 0.96);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      width: 290px;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 50;
+      text-align: center;
+      backdrop-filter: blur(12px);
+    }
+    .resume-btn-row { display: flex; gap: 8px; }
+    .btn-dialog {
+      flex: 1;
+      padding: 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-resume { background: var(--accent); color: #000; border-color: var(--accent); }
+    .btn-restart { background: #192233; color: #f1f5f9; }
+  </style>
+</head>
+<body>
+
+  <div id="layer1">
+    <div class="brand-title">JBH CINEMA</div>
+
+    <div class="file-card">
+      <div style="font-size: 40px;">📁</div>
+      <div style="font-weight: 700; font-size: 15px; color: #fff;">Choose Video File</div>
+      <input type="file" id="directPicker" />
+    </div>
+
+    <div id="statusText">Select your video file...</div>
+  </div>
+
+  <div id="layer2" onclick="toggleControls()">
+    <div id="videoContainer">
+      <video id="mainVideo" playsinline webkit-playsinline></video>
+    </div>
+
+    <div class="top-bar" id="topBar" onclick="event.stopPropagation()">
+      <span style="font-weight: 800; color: var(--accent);">JBH</span>
+      <span id="videoTitle" style="max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px;">Playing</span>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn-action" onclick="closePlayer(event)">⏏ Close</button>
+      </div>
+    </div>
+
+    <div class="resume-modal" id="resumeModal">
+      <h3 style="font-size: 15px;">Resume Playback?</h3>
+      <p id="resumePromptText" style="font-size: 12px; color: var(--sub);">Previous position: 00:00</p>
+      <div class="resume-btn-row">
+        <button class="btn-dialog btn-resume" onclick="handleResumeChoice(true)">Resume</button>
+        <button class="btn-dialog btn-restart" onclick="handleResumeChoice(false)">Restart</button>
+      </div>
+    </div>
+
+    <div class="bottom-bar" id="bottomBar" onclick="event.stopPropagation()">
+      <input type="range" class="timeline" id="timeline" min="0" max="100" value="0" step="0.1" oninput="seekVideo(event)">
+      
+      <div class="controls-row">
+        <div class="btn-group">
+          <button class="ctrl-btn" onclick="togglePlay()" id="playBtn">▶</button>
+          <button class="ctrl-btn" onclick="seekOffset(-10)">-10s</button>
+          <button class="ctrl-btn" onclick="seekOffset(10)">+10s</button>
+          <div class="time-txt" id="timecode">00:00 / 00:00</div>
+        </div>
+
+        <div class="btn-group">
+          <button class="ctrl-btn" onclick="cycleAspect()" id="aspectBtn">FIT</button>
+          <button class="ctrl-btn" onclick="toggleFullscreen()" id="fullBtn">⛶ Fill Screen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SECRET_KEY = "OmniCore_Internal_Decryption_Seed_v2026_Secure_Key";
+    const picker = document.getElementById("directPicker");
+    const video = document.getElementById("mainVideo");
+    const timeline = document.getElementById("timeline");
+    const timecode = document.getElementById("timecode");
+    const playBtn = document.getElementById("playBtn");
+    const statusText = document.getElementById("statusText");
+    const topBar = document.getElementById("topBar");
+    const bottomBar = document.getElementById("bottomBar");
+    const aspectBtn = document.getElementById("aspectBtn");
+    const fullBtn = document.getElementById("fullBtn");
+    const resumeModal = document.getElementById("resumeModal");
+
+    let currentObjectUrl = null;
+    let resumeKey = null;
+    let savedSeekTime = 0;
+    let uiTimeout = null;
+
+    const ASPECTS = ["contain", "cover", "fill"];
+    const ASPECT_NAMES = ["FIT", "FILL SCREEN", "STRETCH"];
+    let aspectIdx = 0;
+
+    // Register Service Worker on load
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(err => {
+        console.error("Worker registration error:", err);
+      });
+    }
+
+    picker.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      statusText.innerText = `Analyzing: ${file.name} (${(file.size / (1024*1024)).toFixed(1)} MB)...`;
+      document.getElementById("videoTitle").innerText = file.name;
+      resumeKey = `jbh_pos_${file.name}_${file.size}`;
+
+      try {
+        const headerBlob = file.slice(0, 131072);
+        const headerBuf = await headerBlob.arrayBuffer();
+        const u8Header = new Uint8Array(headerBuf);
+
+        const startPat = new TextEncoder().encode("@@@START@@@");
+        const endPat = new TextEncoder().encode("@@@END@@@");
+
+        const startIdx = findBytes(u8Header, startPat);
+        const endIdx = findBytes(u8Header, endPat);
+
+        if (startIdx !== -1 && endIdx !== -1) {
+          statusText.innerText = "Encrypted video detected. Starting Stream Engine...";
+          const jsonSlice = u8Header.subarray(startIdx + startPat.length, endIdx);
+          const manifest = JSON.parse(new TextDecoder().decode(jsonSlice));
+          await streamDecryptLocal(file, manifest, endIdx + endPat.length);
+        } else {
+          statusText.innerText = "Direct stream ready.";
+          launchStage(URL.createObjectURL(file));
+        }
+      } catch (err) {
+        statusText.innerText = "Error: " + err.message;
+        alert("Load Error: " + err.message);
+      }
+    });
+
+    function findBytes(buf, pattern) {
+      for (let i = 0; i <= buf.length - pattern.length; i++) {
+        let match = true;
+        for (let j = 0; j < pattern.length; j++) {
+          if (buf[i + j] !== pattern[j]) { match = false; break; }
+        }
+        if (match) return i;
+      }
+      return -1;
+    }
+
+    async function deriveKey(salt) {
+      const enc = new TextEncoder();
+      const baseKey = await crypto.subtle.importKey("raw", enc.encode(SECRET_KEY), { name: "PBKDF2" }, false, ["deriveKey"]);
+      return crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt: salt, iterations: 1000, hash: "SHA-256" },
+        baseKey,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["decrypt"]
+      );
+    }
+
+    // Zero-RAM On-Demand Streaming Engine
+    async function streamDecryptLocal(file, manifest, clusterOffset) {
+      statusText.innerText = "Deriving cryptographic keys...";
+      const salt = new Uint8Array(manifest.saltHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+      const key = await deriveKey(salt);
+
+      statusText.innerText = "Mounting stream pipeline...";
+
+      const registration = await navigator.serviceWorker.ready;
+      const targetWorker = registration.active || navigator.serviceWorker.controller;
+
+      // Transfer file and crypto handles to the worker (no byte buffers retained in RAM)
+      targetWorker.postMessage({
+        type: "REGISTER_STREAM",
+        file: file,
+        manifest: manifest,
+        key: key,
+        clusterOffset: clusterOffset
+      });
+
+      // Small delay to ensure the worker is synchronized
+      await new Promise(r => setTimeout(r, 120));
+
+      statusText.innerText = "Stream ready.";
+      launchStage("./stream-virtual-playback.mp4");
+    }
+
+    function launchStage(url) {
+      if (currentObjectUrl && currentObjectUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(currentObjectUrl);
+      }
+      currentObjectUrl = url;
+
+      document.getElementById("layer1").style.display = "none";
+      document.getElementById("layer2").style.display = "block";
+
+      video.src = currentObjectUrl;
+      video.style.objectFit = ASPECTS[aspectIdx];
+      video.play().catch(() => {});
+      playBtn.innerText = "⏸";
+
+      video.onloadedmetadata = updateControlsPosition;
+      window.addEventListener("resize", updateControlsPosition);
+
+      checkResumeProgress();
+      resetTimer();
+    }
+
+    function updateControlsPosition() {
+      if (!video.videoWidth || !video.videoHeight) {
+        bottomBar.style.bottom = "12px";
+        return;
+      }
+      if (aspectIdx === 1 || aspectIdx === 2) {
+        bottomBar.style.bottom = "12px";
+        return;
+      }
+      const stageW = window.innerWidth;
+      const stageH = window.innerHeight;
+      const vidRatio = video.videoWidth / video.videoHeight;
+      const stageRatio = stageW / stageH;
+
+      if (stageRatio > vidRatio) {
+        bottomBar.style.bottom = "12px";
+      } else {
+        const renderedVideoH = stageW / vidRatio;
+        const bottomBarHeight = (stageH - renderedVideoH) / 2;
+        bottomBar.style.bottom = `${Math.max(10, Math.floor(bottomBarHeight))}px`;
+      }
+    }
+
+    function checkResumeProgress() {
+      const savedTime = localStorage.getItem(resumeKey);
+      if (savedTime && parseFloat(savedTime) > 10) {
+        savedSeekTime = parseFloat(savedTime);
+        document.getElementById("resumePromptText").innerText = `Previous position: ${fmt(savedSeekTime)}`;
+        resumeModal.style.display = "flex";
+      }
+    }
+
+    function handleResumeChoice(shouldResume) {
+      resumeModal.style.display = "none";
+      if (shouldResume && savedSeekTime) {
+        video.currentTime = savedSeekTime;
+      }
+      video.play().catch(() => {});
+      playBtn.innerText = "⏸";
+      resetTimer();
+    }
+
+    function closePlayer(e) {
+      if (e) e.stopPropagation();
+      video.pause();
+      if (currentObjectUrl && currentObjectUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(currentObjectUrl);
+      }
+      video.removeAttribute("src");
+      video.load();
+      picker.value = "";
+      document.getElementById("layer2").style.display = "none";
+      document.getElementById("layer1").style.display = "flex";
+      statusText.innerText = "Select your video file...";
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    }
+
+    function toggleControls() {
+      if (topBar.classList.contains("ui-hidden")) {
+        topBar.classList.remove("ui-hidden");
+        bottomBar.classList.remove("ui-hidden");
+        resetTimer();
+      } else {
+        topBar.classList.add("ui-hidden");
+        bottomBar.classList.add("ui-hidden");
+      }
+    }
+
+    function resetTimer() {
+      clearTimeout(uiTimeout);
+      uiTimeout = setTimeout(() => {
+        if (!video.paused) {
+          topBar.classList.add("ui-hidden");
+          bottomBar.classList.add("ui-hidden");
+        }
+      }, 3500);
+    }
+
+    function togglePlay() {
+      if (video.paused) { video.play(); playBtn.innerText = "⏸"; resetTimer(); }
+      else { video.pause(); playBtn.innerText = "▶"; }
+    }
+
+    function seekOffset(sec) {
+      video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + sec));
+      resetTimer();
+    }
+
+    function seekVideo(e) {
+      video.currentTime = (e.target.value / 100) * video.duration;
+      resetTimer();
+    }
+
+    function cycleAspect() {
+      aspectIdx = (aspectIdx + 1) % ASPECTS.length;
+      video.style.objectFit = ASPECTS[aspectIdx];
+      aspectBtn.innerText = ASPECT_NAMES[aspectIdx];
+      updateControlsPosition();
+      resetTimer();
+    }
+
+    async function toggleFullscreen() {
+      const stage = document.getElementById("layer2");
+      const isFull = document.fullscreenElement || document.webkitFullscreenElement;
+
+      if (!isFull) {
+        try {
+          if (stage.requestFullscreen) await stage.requestFullscreen({ navigationUI: "hide" });
+          else if (stage.webkitRequestFullscreen) await stage.webkitRequestFullscreen();
+        } catch (e) {
+          if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+        }
+
+        if (screen.orientation && screen.orientation.lock) {
+          screen.orientation.lock("landscape").catch(() => {});
+        }
+
+        aspectIdx = 1;
+        video.style.objectFit = "cover";
+        aspectBtn.innerText = "FILL SCREEN";
+        fullBtn.innerText = "⛶ Exit";
+      } else {
+        if (document.exitFullscreen) await document.exitFullscreen().catch(() => {});
+        if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+
+        aspectIdx = 0;
+        video.style.objectFit = "contain";
+        aspectBtn.innerText = "FIT";
+        fullBtn.innerText = "⛶ Fill Screen";
+      }
+      setTimeout(updateControlsPosition, 100);
+      resetTimer();
+    }
+
+    video.addEventListener("timeupdate", () => {
+      timeline.value = (video.currentTime / video.duration) * 100 || 0;
+      timecode.innerText = `${fmt(video.currentTime)} / ${fmt(video.duration || 0)}`;
+
+      if (resumeKey && video.currentTime > 5 && !video.ended) {
+        localStorage.setItem(resumeKey, video.currentTime);
+      }
+    });
+
+    function fmt(s) {
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return `${m < 10 ? '0' : ''}${m}:${sec < 10 ? '0' : ''}${sec}`;
+    }
+  </script>
+</body>
+</html>
